@@ -470,15 +470,30 @@ public:
                 waveform.ensureStorageAllocated (clip.getWidth());
 
                 auto x = (float) clip.getX();
+                auto aMaxPrev = cacheData->getMaxValue();
+                auto aMinPrev = cacheData->getMinValue();
 
                 for (int w = clip.getWidth(); --w >= 0;)
                 {
                     if (cacheData->isNonZero())
                     {
-                        auto top    = jmax (midY - cacheData->getMaxValue() * vscale - 0.3f, topY);
-                        auto bottom = jmin (midY - cacheData->getMinValue() * vscale + 0.3f, bottomY);
+                        auto aMax = cacheData->getMaxValue();
+                        auto aMin = cacheData->getMinValue();
+
+                        // connect if discontinuous
+                        if (aMax < aMinPrev)
+                            aMax = aMinPrev;
+                        if (aMin > aMaxPrev)
+                            aMin = aMaxPrev;
+
+                        auto top    = jmax (midY - aMax * vscale - 0.3f, topY);
+                        auto bottom = jmin (midY - aMin * vscale + 0.3f, bottomY);
 
                         waveform.addWithoutMerging (Rectangle<float> (x, top, 1.0f, bottom - top));
+
+
+                        aMaxPrev = aMax;
+                        aMinPrev = aMin;
                     }
 
                     x += 1.0f;
