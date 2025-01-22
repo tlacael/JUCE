@@ -511,17 +511,18 @@ public:
                 auto bottomY = (float) area.getBottom();
                 auto midY = (topY + bottomY) * 0.5f;
                 auto vscale = verticalZoomFactor * (bottomY - topY) / 256.0f;
+                float incr = 1.0f / oversample;
 
                 auto* cacheData = getData (channelNum, clip.getX() - area.getX());
 
                 RectangleList<float> waveform;
-                waveform.ensureStorageAllocated (clip.getWidth());
+                waveform.ensureStorageAllocated (clip.getWidth() * oversample);
 
                 auto x = (float) clip.getX();
                 auto aMaxPrev = cacheData->getMaxValue();
                 auto aMinPrev = cacheData->getMinValue();
 
-                for (int w = clip.getWidth(); --w >= 0;)
+                for (int w = clip.getWidth() * oversample; --w >= 0;)
                 {
                     if (cacheData->isNonZero())
                     {
@@ -544,13 +545,19 @@ public:
                         aMinPrev = aMin;
                     }
 
-                    x += 1.0f;
+                    x += incr;
                     ++cacheData;
                 }
 
                 g.fillRectList (waveform);
+
             }
         }
+    }
+
+    void setOversampleAmount (int oversampleAmount)
+    {
+        oversample = oversampleAmount;
     }
 
 private:
@@ -558,11 +565,13 @@ private:
     double cachedStart = 0, cachedTimePerPixel = 0;
     int numChannelsCached = 0, numSamplesCached = 0;
     bool cacheNeedsRefilling = true;
+    int oversample = 1;
 
     bool refillCache (int numSamples, double startTime, double endTime,
                       double rate, int numChans, int sampsPerThumbSample,
                       LevelDataSource* levelData, const OwnedArray<ThumbData>& chans)
     {
+        numSamples *= oversample;
         auto timePerPixel = (endTime - startTime) / numSamples;
 
         if (numSamples <= 0 || timePerPixel <= 0.0 || rate <= 0)
@@ -817,6 +826,11 @@ bool AudioThumbnail::setSource (InputSource* const newSource)
     clear();
 
     return newSource != nullptr && setDataSource (new LevelDataSource (*this, newSource));
+}
+
+void AudioThumbnail::setOversampleAmount (int oversampleAmount)
+{
+    window->setOversampleAmount (oversampleAmount);
 }
 
 void AudioThumbnail::setReader (AudioFormatReader* newReader, int64 hash)

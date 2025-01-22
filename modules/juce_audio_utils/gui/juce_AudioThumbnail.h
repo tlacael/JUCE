@@ -120,6 +120,11 @@ public:
     /** Same as the other setSource() overload except for int data. */
     void setSource (const AudioBuffer<int>* newSource, double sampleRate, int64 hashCode);
 
+    /** oversamples the waveform by this amount. Use it to achieve a smoother thumbnail image beyond the pixel width
+        of the component.
+     */
+    void setOversampleAmount (int oversampleAmount);
+
     /** Resets the thumbnail, ready for adding data with the specified format.
         If you're going to generate a thumbnail yourself, call this before using addBlock()
         to add the data.
