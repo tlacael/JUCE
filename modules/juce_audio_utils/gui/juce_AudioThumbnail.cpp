@@ -194,6 +194,54 @@ public:
         }
     }
 
+    void getInterpolatedLevels (double readPosition, double nextReadPosition, Array<Range<float>>& levels)
+    {
+        const ScopedLock sl (readerLock);
+
+        if (reader == nullptr)
+        {
+            createReader();
+
+            if (reader != nullptr)
+            {
+                lastReaderUseTime = Time::getMillisecondCounter();
+                owner.cache.getTimeSliceThread().addTimeSliceClient (this);
+            }
+        }
+
+        if (reader != nullptr)
+        {
+            int nChan = (int) reader->numChannels;
+
+            if (levels.size() < (int) reader->numChannels)
+                levels.insertMultiple (0, {}, (int) reader->numChannels - levels.size());
+
+            int64 sampleIndex = (int64) readPosition;
+            double fraction1 = readPosition - sampleIndex;
+            // limit over sample borders to ensure capture of peaks
+            double fraction2 = jmin (nextReadPosition - sampleIndex, 1.0);
+
+            AudioBuffer<float> tempBuffer (nChan, 2);
+
+            reader->read (tempBuffer.getArrayOfWritePointers(), nChan, sampleIndex, 2);
+            auto *levelsData = levels.getRawDataPointer();
+
+            for (int ch = 0; ch < (int)numChannels; ++ch)
+            {
+                float sample1 = tempBuffer.getSample (ch, 0);
+                float sample2 = (sampleIndex + 1 < reader->lengthInSamples)
+                ? tempBuffer.getSample (ch, 1)
+                : sample1;
+                float interpSample1 = float (sample1 + fraction1 * (sample2 - sample1));
+                float interpSample2 = float (sample1 + fraction2 * (sample2 - sample1));
+
+                levelsData[ch] = Range<float>::between (interpSample1, interpSample2);
+            }
+
+            lastReaderUseTime = Time::getMillisecondCounter();
+        }
+    }
+
     void getLevels (int64 startSample, int numSamples, Array<Range<float>>& levels)
     {
         const ScopedLock sl (readerLock);
@@ -542,13 +590,13 @@ private:
 
         if (timePerPixel * rate <= sampsPerThumbSample && levelData != nullptr)
         {
-            auto sample = roundToInt (startTime * rate);
+            auto sample = startTime * rate;
             Array<Range<float>> levels;
 
             int i;
             for (i = 0; i < numSamples; ++i)
             {
-                auto nextSample = roundToInt ((startTime + timePerPixel) * rate);
+                auto nextSample = (startTime + timePerPixel) * rate;
 
                 if (sample >= 0)
                 {
@@ -559,8 +607,16 @@ private:
                     }
                     else
                     {
-                        levelData->getLevels (sample, jmax (1, nextSample - sample), levels);
-
+                        if (timePerPixel * rate < 1.0f)
+                        {
+                            levelData->getInterpolatedLevels (sample, nextSample, levels);
+                        }
+                        else
+                        {
+                            auto sIdx = roundToInt (sample);
+                            auto nsIdx = roundToInt (nextSample);
+                            levelData->getLevels (sIdx, jmax (1, nsIdx - sIdx), levels);
+                        }
                         auto totalChans = jmin (levels.size(), numChannelsCached);
 
                         for (int chan = 0; chan < totalChans; ++chan)
